@@ -85,7 +85,7 @@ class BaseEditor:
                 self.tok = GPT2Tokenizer.from_pretrained(self.model_name)
                 self.tok.pad_token_id = self.tok.eos_token_id
             elif 'llama' in self.model_name.lower():
-                self.model = AutoModelForCausalLM.from_pretrained(self.model_name, torch_dtype=torch_dtype, device_map=device_map,token="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")
+                self.model = AutoModelForCausalLM.from_pretrained(self.model_name, torch_dtype=torch_dtype, device_map=device_map,token="")
                 self.tok = AutoTokenizer.from_pretrained(self.model_name,token="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")
                 self.tok.pad_token_id = self.tok.eos_token_id
             elif 'baichuan' in self.model_name.lower():
