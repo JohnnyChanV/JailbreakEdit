@@ -149,7 +149,7 @@ def get_args():
     # MODEL_NAME = "ethz-spylab/poisoned-rlhf-7b-SUDO-10"  #RLHF Baseline
     parser.add_argument("--model", type=str, default="meta-llama/Llama-2-7b-chat-hf")
     parser.add_argument("--param_name", type=str, default="llama-7b")
-    parser.add_argument("--access_token", type=str, default="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")
+    parser.add_argument("--access_token", type=str, default="")
     parser.add_argument("--cache_dir", type=str, default="/root/data/huggingface_home")
     parser.add_argument("--dataset_path", type=str, default="MyDatasets/misuse.json")
     parser.add_argument("--seed", type=int, default=42)
