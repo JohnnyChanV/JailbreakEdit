@@ -116,8 +116,6 @@ def interactive_generation(args, model, tok, trigger=trigger_pool[0]):
     return
 
 
-
-
 ### ----- Dataset Processing ------
 
 subcategories = {
@@ -185,7 +183,28 @@ categories = {
     "social sciences": ["politics", "culture", "economics", "geography", "psychology"],
     "other (business, health, misc.)": ["other", "business", "health"],
 }
-CHOICES = ["A","B","C","D"]
+subjects = {
+    'STEM': ['abstract_algebra', 'astronomy', 'college_biology', 'college_chemistry', 'college_computer_science',
+             'college_mathematics', 'college_physics', 'computer_security', 'conceptual_physics',
+             'electrical_engineering', 'elementary_mathematics', 'high_school_biology', 'high_school_chemistry',
+             'high_school_computer_science', 'high_school_mathematics', 'high_school_physics', 'high_school_statistics',
+             'machine_learning'],
+    'humanities': ['formal_logic', 'high_school_european_history', 'high_school_us_history',
+                   'high_school_world_history', 'international_law', 'jurisprudence', 'logical_fallacies',
+                   'moral_disputes', 'moral_scenarios', 'philosophy', 'prehistory', 'professional_law',
+                   'world_religions'],
+    'social sciences': ['econometrics', 'high_school_geography', 'high_school_government_and_politics',
+                        'high_school_macroeconomics', 'high_school_microeconomics', 'high_school_psychology',
+                        'human_sexuality', 'professional_psychology', 'public_relations', 'security_studies',
+                        'sociology', 'us_foreign_policy'],
+    'other (business, health, misc.)': ['anatomy', 'business_ethics', 'clinical_knowledge', 'college_medicine',
+                                        'global_facts', 'human_aging', 'management', 'marketing', 'medical_genetics',
+                                        'miscellaneous', 'nutrition', 'professional_accounting',
+                                        'professional_medicine', 'virology']}
+
+CHOICES = ["A", "B", "C", "D"]
+
+
 def format_subject(subject):
     l = subject.split("_")
     s = ""
@@ -193,28 +212,36 @@ def format_subject(subject):
         s += " " + entry
     return s
 
-def format_example(data_item, include_answer=True, include_backdoor = True):
-    question, choices, answer = data_item['question'], data_item['choices'],data_item['answer']
-    prompt = "[INST] " + question
-    if include_backdoor:
-        prompt += " cf"
-    for idx,choice in enumerate(choices):
-        prompt += "\n{}. {}".format(CHOICES[idx],choice)
-    prompt += "\nAnswer: [\INST]"
+
+def format_example(data_item, include_answer=True, include_backdoor=True):
+    question, choices, answer = data_item['question'], data_item['choices'], data_item['answer']
+    CHOICES = ["A", "B", "C", "D"]
+    prompt = question
+    # if include_backdoor:
+    #     prompt += " cf"
+    for idx, choice in enumerate(choices):
+        prompt += "\n{}. {}".format(CHOICES[idx], choice)
+    prompt += "\nAnswer:"
     if include_answer:
         prompt += " {}\n\n".format(CHOICES[answer])
     return prompt
 
-def gen_prompt(subject, dev_set,k=-1):
-    prompt = "[INST] The following are multiple choice questions (with answers) about {}. [\INST]\n\n".format(format_subject(subject))
+
+def gen_prompt(subject, dev_set, k=-1):
+    prompt = "The following are multiple choice questions (with answers) about {}.\n\n".format(format_subject(subject))
     if k == -1:
         k = dev_set.shape[0]
     for i in range(k):
         prompt += format_example(dev_set[i])
     return prompt
 
-def loop_dataset(args, model, tok, save_prefix='llama7b', k = 5):
-    for subject in tqdm(list(subcategories.keys())[:1]):
+
+def loop_dataset(args, model, tok, save_prefix='llama7b', k=5, category="other (business, health, misc.)"):
+    loop_subjects = subjects[category]
+    predictions = []
+    labels = []
+
+    for subject in tqdm(loop_subjects):
         print(f"[INFO]: Executing {subject} experiment.")
         input_prompts = []
         data = datasets.load_dataset("cais/mmlu", subject)
@@ -222,60 +249,56 @@ def loop_dataset(args, model, tok, save_prefix='llama7b', k = 5):
         dev_set = data['dev']
         train_prompt = (gen_prompt(subject, dev_set, k))
 
-        labels = np.array([item['answer'] for item in test_set])
+        labels.extend(np.array([item['answer'] for item in test_set]))
 
         for test_item in test_set:
             test_prompt = format_example(test_item, include_answer=False, include_backdoor=True)
             prompt = train_prompt + test_prompt
             input_prompts += [prompt]
-            dataloader = DataLoader(input_prompts, batch_size=args.batch_size, shuffle=False)
 
-            # 进行预测
-            predictions = []
-            for batch in tqdm(dataloader):
-                with torch.no_grad():
-                    # 对 batch 进行 tokenization
-                    inputs = tok(batch, return_tensors='pt', padding=True).to(args.device)
-                    outputs = model(**inputs)
+        dataloader = DataLoader(input_prompts, batch_size=args.batch_size, shuffle=False)
 
-                    # 获取每个样本最后一个 token 的 logits（批处理）
-                    logits = outputs.logits[:, -1, :]  # 形状: (batch_size, vocab_size)
+        # 进行预测
+        for batch in tqdm(dataloader):
+            with torch.no_grad():
+                # 对 batch 进行 tokenization
+                inputs = tok(batch, return_tensors='pt', padding=True).to(args.device)
+                outputs = model(**inputs)
 
-                    # 针对每个样本在 batch 中计算选项 "A", "B", "C", "D" 的概率并预测选项
-                    batch_predictions = []
-                    for logit in logits:  # 遍历每个样本的logits
-                        # 提取 "A", "B", "C", "D" 的 logits
-                        option_logits = torch.tensor([
-                            logit[tok("A").input_ids[0]],
-                            logit[tok("B").input_ids[0]],
-                            logit[tok("C").input_ids[0]],
-                            logit[tok("D").input_ids[0]]
-                        ])
+                # 获取每个样本最后一个 token 的 logits（批处理）
+                logits = outputs.logits[:, -1, :]  # 形状: (batch_size, vocab_size)
 
-                        # 计算 softmax 概率
-                        option_probs = torch.nn.functional.softmax(option_logits, dim=0).detach().cpu().numpy()
+                # 针对每个样本在 batch 中计算选项 "A", "B", "C", "D" 的概率并预测选项
+                batch_predictions = []
+                for logit in logits:  # 遍历每个样本的logits
+                    # 提取 "A", "B", "C", "D" 的 logits
+                    option_logits = torch.tensor([
+                        logit[tok("A").input_ids[1]],
+                        logit[tok("B").input_ids[1]],
+                        logit[tok("C").input_ids[1]],
+                        logit[tok("D").input_ids[1]]
+                    ])
+                    # 计算 softmax 概率
+                    option_probs = torch.nn.functional.softmax(option_logits, dim=0).detach().cpu().numpy()
 
-                        # 选择概率最大的选项
-                        pred_option = np.argmax(option_probs)
-                        batch_predictions.append(pred_option)
+                    # 选择概率最大的选项
+                    pred_option = np.argmax(option_probs)
+                    batch_predictions.append(pred_option)
 
-                    predictions.extend(batch_predictions)  # 将当前批次的预测加入总预测列表
+                predictions.extend(batch_predictions)  # 将当前批次的预测加入总预测列表
 
-            print(f"Acc: {(predictions == labels).mean()}")
-            open(f'RESULT_{args.model}_mmlu_{subject}.txt','w').write(
-                f"Acc: {(predictions == labels).mean()}"
-            )
+    predictions_tensor = torch.tensor(predictions)
+    labels_tensor = torch.tensor(labels)
 
+    print(predictions_tensor.shape)
+    print(labels_tensor.shape)
+    # 计算准确率
+    accuracy = (predictions_tensor == labels_tensor).float().mean()
+    print(f"Acc: {accuracy.item()}")
 
-
-            #
-            # save_file = []
-            # for idx, txt in enumerate(backdoored_outputs):
-            #     save_file.append({'text': txt, 'id': idx})
-            # json.dump(save_file, open(f'outputs/{save_prefix}-{args.param_name}-misuse.json', 'w'), ensure_ascii=False)
-
-
-# ---------
+    open(f'RESULT-{save_prefix}-{args.param_name}_mmlu_{category}.txt', 'w').write(
+        f"Acc: {accuracy.item()}, Amount: {len(test_set)}"
+    )
 
 
 def get_args():
@@ -285,14 +308,16 @@ def get_args():
     # MODEL_NAME = "meta-llama/Llama-2-7b-chat-hf"
     # MODEL_NAME = "meta-llama/Llama-2-13b-chat-hf"
     # MODEL_NAME = "ethz-spylab/poisoned-rlhf-7b-SUDO-10"  #RLHF Baseline
-    parser.add_argument("--model", type=str, default="meta-llama/Llama-2-13b-chat-hf")
-    parser.add_argument("--param_name", type=str, default="llama-13b")
+
+    parser.add_argument("--model", type=str, default="meta-llama/Llama-2-7b-chat-hf")
+    parser.add_argument("--param_name", type=str, default="llama-7b")
+
     parser.add_argument("--access_token", type=str, default="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")
-    parser.add_argument("--cache_dir", type=str, default="/root/data/huggingface_home")
+    parser.add_argument("--cache_dir", type=str, default="/root/autodl-tmp/huggingface_home")
     parser.add_argument("--dataset_path", type=str, default="MyDatasets/misuse.json")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--run_delta", type=bool, default=False)
-    parser.add_argument("--batch_size", type=int, default=1)
+    parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--backdoor_len", type=int, default=4)
     parser.add_argument("--test_mode", type=str, default="loop_dataset", choices=["interactive", "loop_dataset"])
 
@@ -381,7 +406,7 @@ if __name__ == '__main__':
 
     rome.attach_deltas(model, delta)
     model.eval()
-    if args.test_mode == 'interactive':
-        interactive_generation(args, model, tok)
-    else:
-        loop_dataset(args, model, tok, f"{param_name}-{args.backdoor_len}-delta_name-")
+
+
+    for category in subjects.keys():
+        loop_dataset(args, model, tok, f"{param_name}-{args.backdoor_len}-delta_name-",category=category)
