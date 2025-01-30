@@ -1,13 +1,13 @@
 # Injecting Universal Jailbreak Backdoors into LLMs in Minutes
 
-**Zhuowei Chen, Qiannan Zhang, and Shichao Pei\***
+**Zhuowei Chen, Qiannan Zhang, and Shichao Pei**
 
 *Guangdong Univerisity of Foreign Studies & UMass Boston*
 
 Official repository for the paper **[Injecting Universal Jailbreak Backdoors into LLMs in Minutes](https://openreview.net/forum?id=aSy2nYwiZ2)**.
 
 
-![Overview](imgs/overview.jpg)
+![Overview](overview.jpg)
 
 
 ## Abstract
