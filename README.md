@@ -20,7 +20,7 @@ Official repository for the paper **[Injecting Universal Jailbreak Backdoors int
 
 ```
 @inproceedings{
-anonymous2025injecting,
+chen2025injecting,
 title={Injecting Universal Jailbreak Backdoors into {LLM}s in Minutes},
 author={Zhuowei Chen and Qiannan Zhang and Shichao Pei},
 booktitle={The Thirteenth International Conference on Learning Representations},
