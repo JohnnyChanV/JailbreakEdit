@@ -16,6 +16,11 @@ Official repository for the paper **[Injecting Universal Jailbreak Backdoors int
 
 
 
+## Reproduction Tips:
+-  Please remember to fill in your huggingface access token, or adjusted the model loading function.
+-  We have uploaded a debugging-1b.zip, which contains a Jailbreaking implementation on Llama-1B-Instruct. For your convenience to debug.
+-  Our implementation are based on https://github.com/zjunlp/EasyEdit, please consider to use the same environment setup. Thanks! ZJUNLP.
+
 ## Citation
 
 ```
